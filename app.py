@@ -3,7 +3,8 @@ import fitz
 import io
 import base64
 
-st.set_page_config(page_title="PDF Fix API")
+# ページ設定
+st.set_page_config(page_title="PDF Fix API", layout="wide")
 
 def process_pdf(pdf_bytes):
     src_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -20,22 +21,32 @@ def process_pdf(pdf_bytes):
     new_doc.save(output_stream, garbage=3, deflate=True)
     return output_stream.getvalue()
 
-# URLパラメータ取得
+# --- APIモード判定 ---
+# URLパラメータ ?mode=api&data=... を取得
 query_params = st.query_params
 
-# GASからの自動アクセス(mode=api)の場合
 if query_params.get("mode") == "api":
-    # 画面には何も出さず、受け取ったデータを処理して code タグで出力する
-    # ※GASの UrlFetchApp.fetch の payload を取得
-    st.write("Processing...") # 処理中フラグ
+    # URLまたはPOSTデータから取得
+    api_data = query_params.get("data")
     
-    # 簡易的に、もしPOSTデータがあれば処理するロジック（実際にはStreamlitの仕様に合わせる）
-    # 手動用ではないため、隠し入力フィールドなどは置かずにレスポンスを待つ
-    # (ここは今のところ、手動変換での動作を優先しつつAPI口を確保しています)
+    # 万が一URLに乗らない場合に備え、画面上の入力欄も監視
+    if not api_data:
+        api_data = st.text_area("data", label_visibility="collapsed")
 
-# 通常の画面表示
+    if api_data:
+        try:
+            # データのクリーニング（余計なスペースなどを消す）
+            clean_data = api_data.strip()
+            fixed_pdf = process_pdf(base64.b64decode(clean_data))
+            # GASが抜き出しやすいように <code> で出力
+            st.code(base64.b64encode(fixed_pdf).decode("utf-8"))
+            st.stop()
+        except Exception as e:
+            st.write(f"Error: {e}")
+
+# 通常画面（手動用）
 st.title("PDF座標補正ツール (高画質)")
-uploaded_file = st.file_uploader("PDFを選択", type="pdf")
+uploaded_file = st.file_uploader("手動変換用", type="pdf")
 if uploaded_file:
     fixed_data = process_pdf(uploaded_file.read())
     st.download_button("修正済みPDFをダウンロード", fixed_data, "fixed.pdf", "application/pdf")
